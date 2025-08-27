@@ -40,17 +40,27 @@ def load_model(path: str):
 
 
 def infer(model, text: str):
-    cleaned = pd.Series([simple_clean(text)])
-    pred = model.predict(cleaned)[0]
+    # clean -> let the *pipeline* handle vectorization
+    cleaned = simple_clean(text)
+    X = [cleaned]  # a list of one string works well with sklearn Pipeline
+
+    # prediction from the full pipeline
+    pred = model.predict(X)[0]
+
+    # optional confidence using the *pipeline* interface
     conf = None
-    clf = model.named_steps.get("clf", None)
-    if clf is not None and hasattr(clf, "decision_function"):
-        dfun = clf.decision_function(cleaned)
-        conf = float(1 / (1 + np.exp(-np.max(dfun)))) if np.ndim(dfun) else float(1 / (1 + np.exp(-dfun)))
-    elif clf is not None and hasattr(clf, "predict_proba"):
-        proba = clf.predict_proba(cleaned)[0]
-        conf = float(np.max(proba))
+    try:
+        if hasattr(model, "decision_function"):
+            dfun = model.decision_function(X)
+            conf = float(1 / (1 + np.exp(-np.max(dfun)))) if np.ndim(dfun) else float(1 / (1 + np.exp(-dfun)))
+        elif hasattr(model, "predict_proba"):
+            proba = model.predict_proba(X)[0]
+            conf = float(np.max(proba))
+    except Exception:
+        pass
+
     return str(pred), conf
+
 
 
 def normalize_text_column(df: pd.DataFrame) -> pd.Series:
