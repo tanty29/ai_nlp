@@ -72,7 +72,7 @@ st.caption("Load your trained model, analyze text sentiment, and export batch pr
 
 with st.sidebar:
     st.header("⚙️ Model Settings")
-    default_model = "models/best_model_LinearSVM.joblib"
+    default_model = "/best_model_LinearSVM.joblib"
     model_path = st.text_input("Path to saved .joblib model", value=default_model)
     load_button = st.button("Load Model")
 
