@@ -1,7 +1,7 @@
 # app_streamlit.py
 # -------------------------------------------------------------
-# Professional Sentiment Analysis Prototype (Streamlit)
-# - Loads a trained model pipeline saved with joblib (e.g., models/best_model_LinearSVM.joblib)
+# Professional Sentiment Analysis Prototype (Streamlit) — Session-State Safe
+# - Stores the loaded model in st.session_state so it persists across reruns/tabs
 # - Single-text prediction with confidence
 # - Batch predictions from CSV (columns: text or review/content)
 # - Optional display of metrics if you provide outputs/summary.json and metrics_summary.csv
@@ -10,6 +10,7 @@
 
 import json
 from pathlib import Path
+import os
 import re
 import string
 
@@ -42,11 +43,9 @@ def infer(model, text: str):
     cleaned = pd.Series([simple_clean(text)])
     pred = model.predict(cleaned)[0]
     conf = None
-    # Try to expose a confidence proxy if available
     clf = model.named_steps.get("clf", None)
     if clf is not None and hasattr(clf, "decision_function"):
         dfun = clf.decision_function(cleaned)
-        # Map margin to [0,1] via sigmoid on max distance
         conf = float(1 / (1 + np.exp(-np.max(dfun)))) if np.ndim(dfun) else float(1 / (1 + np.exp(-dfun)))
     elif clf is not None and hasattr(clf, "predict_proba"):
         proba = clf.predict_proba(cleaned)[0]
@@ -74,29 +73,33 @@ with st.sidebar:
     st.header("⚙️ Model Settings")
     default_model = "models/best_model_LinearSVM.joblib"
     model_path = st.text_input("Path to saved .joblib model", value=default_model)
-    load_button = st.button("Load Model")
+    load_button = st.button("Load / Reload Model")
 
     st.markdown("---")
     st.subheader("📄 Optional: Show Evaluation Artifacts")
     metrics_csv_path = st.text_input("metrics_summary.csv (optional)", value="outputs/metrics_summary.csv")
     summary_json_path = st.text_input("summary.json (optional)", value="outputs/summary.json")
 
-# Load model (lazy)
-model = None
+# Persist and auto-load model via session_state
 if load_button:
     try:
-        model = load_model(model_path)
+        st.session_state["model"] = load_model(model_path)
         st.success(f"Model loaded: {model_path}")
     except Exception as e:
         st.error(f"Failed to load model: {e}")
 
+# Optional: auto-load on first run if file exists and model not yet loaded
+if "model" not in st.session_state and Path("models/best_model_LinearSVM.joblib").exists():
+    try:
+        st.session_state["model"] = load_model("models/best_model_LinearSVM.joblib")
+        st.info("Auto-loaded models/best_model_LinearSVM.joblib")
+    except Exception:
+        pass
+
 # -------------- Main Tabs --------------
-tab1, tab2, tab3, tab4 = st.tabs([
-    "🔍 Single Prediction",
-    "📦 Batch Predictions",
-    "📈 Evaluation Summary",
-    "📘 Help & Methodology"
-])
+tab1, tab2, tab3, tab4 = st.tabs(
+    ["🔍 Single Prediction", "📦 Batch Predictions", "📈 Evaluation Summary", "📘 Help & Methodology"]
+)
 
 # --- Single Prediction ---
 with tab1:
@@ -112,10 +115,10 @@ with tab1:
         st.code(simple_clean(text), language="text")
 
     if predict_btn:
-        if model is None:
+        if "model" not in st.session_state:
             st.warning("Please load a model from the sidebar first.")
         else:
-            label, conf = infer(model, text)
+            label, conf = infer(st.session_state["model"], text)
             st.success(f"Prediction: **{label}**")
             if conf is not None:
                 st.write(f"Confidence (approx): **{conf:.3f}**")
@@ -124,7 +127,7 @@ with tab1:
 with tab2:
     st.subheader("📦 Batch Predictions from CSV")
     st.caption("Upload a CSV with a column named text/review/content/sentence/comment.")
-    file = st.file_uploader("Upload CSV", type=["csv"]) 
+    file = st.file_uploader("Upload CSV", type=["csv"])
     if file is not None:
         try:
             df_in = pd.read_csv(file)
@@ -132,13 +135,12 @@ with tab2:
             st.write("Preview:")
             st.dataframe(df_in.head(10))
 
-            if model is None:
+            if "model" not in st.session_state:
                 st.warning("Please load a model from the sidebar first.")
             else:
-                preds = []
-                confs = []
+                preds, confs = [], []
                 for t in texts.tolist():
-                    yhat, conf = infer(model, t)
+                    yhat, conf = infer(st.session_state["model"], t)
                     preds.append(yhat)
                     confs.append(conf)
                 out = df_in.copy()
@@ -147,9 +149,13 @@ with tab2:
                 st.success("Batch predictions complete.")
                 st.dataframe(out.head(20))
 
-                # Download link
                 csv_bytes = out.to_csv(index=False).encode("utf-8")
-                st.download_button("Download Predictions CSV", data=csv_bytes, file_name="batch_predictions.csv", mime="text/csv")
+                st.download_button(
+                    "Download Predictions CSV",
+                    data=csv_bytes,
+                    file_name="batch_predictions.csv",
+                    mime="text/csv",
+                )
         except Exception as e:
             st.error(f"Batch prediction failed: {e}")
 
@@ -181,8 +187,6 @@ with tab3:
 
     st.markdown("---")
     st.write("**Confusion Matrices (if present in outputs/):**")
-    # Attempt to show common file names
-    import os
     cm_paths = []
     out_dir = Path("outputs")
     if out_dir.exists():
@@ -198,14 +202,13 @@ with tab3:
 # --- Help & Methodology ---
 with tab4:
     st.subheader("📘 How to Use & Marking Rubric Alignment")
-
     st.markdown(
         """
         **Steps to run**
         1. Train your models in Jupyter (we provided a full notebook). The best model is saved as a `.joblib` in the `models/` folder.
         2. Start this app from your terminal:  
            `streamlit run app_streamlit.py`
-        3. In the sidebar, set the **model path** (e.g., `models/best_model_LinearSVM.joblib`) and click **Load Model**.
+        3. In the sidebar, set the **model path** (e.g., `models/best_model_LinearSVM.joblib`) and click **Load / Reload Model**.
         4. Use **Single Prediction** to analyze a sentence, or **Batch Predictions** to upload a CSV.
         5. (Optional) Provide `outputs/metrics_summary.csv` and `outputs/summary.json` to display training metrics.
 
