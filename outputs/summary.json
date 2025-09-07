@@ -1,0 +1,5 @@
+{
+  "best_model": "LinearSVM",
+  "best_f1_macro(%)": 92.26,
+  "model_path": "models\\best_model_LinearSVM.joblib"
+}

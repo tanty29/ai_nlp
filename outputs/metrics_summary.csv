@@ -1,0 +1,4 @@
+Model,Accuracy (%),Precision (%),Recall (%),F1-Score (%),Best Params
+NaiveBayes,89.67,89.67,89.67,89.67,{'clf__alpha': 0.1}
+LinearSVM,92.26,92.27,92.26,92.26,"{'clf__C': 1.0, 'clf__loss': 'squared_hinge'}"
+KNN,84.97,85.19,84.97,84.95,"{'clf__n_neighbors': 11, 'clf__weights': 'distance'}"
