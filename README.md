@@ -19,3 +19,5 @@ streamlit run app_streamlit.py
 - `outputs/` — metrics & plots
 - `requirements.txt` — dependencies
 - `sample_reviews.csv` — small batch test file
+
+Hosted live on streamlit: https://ai-nlp.streamlit.app/
